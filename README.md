@@ -2,6 +2,41 @@
 
 Personal Neovim config using native `vim.pack`.
 
+## Requirements
+
+Required:
+
+- Neovim (0.12+) with native `vim.pack` support.
+- `git`, for plugin installation.
+- A C compiler / build tools, for Treesitter parsers and native plugin builds.
+- `rg` / ripgrep, for Telescope grep features.
+
+Strongly recommended:
+
+- A Nerd Font, because `vim.g.have_nerd_font = true` and several plugins use icons.
+- `make`, to build `telescope-fzf-native.nvim` and LuaSnip's optional jsregexp support.
+- `fd`, for faster Telescope file finding when available.
+- A system clipboard provider for `clipboard=unnamedplus`:
+  - macOS: built in via `pbcopy`/`pbpaste`
+  - Linux/X11: `xclip` or `xsel`
+  - Linux/Wayland: `wl-clipboard`
+
+Language/tooling requirements:
+
+- Mason installs configured LSP servers and `stylua`.
+- Other formatters must be available separately if you want those filetypes formatted:
+  - PHP: `vendor/bin/pint`, `pint`, `vendor/bin/php-cs-fixer`, or `php-cs-fixer`
+  - Blade: `blade-formatter`
+  - JS/TS: `prettierd` or `prettier`
+  - Go: `gofmt` and `goimports`
+  - Rust: `rustfmt`
+- Some Mason-managed servers require their ecosystem runtimes/package managers to install or run, such as Node/npm, Go, Rust/Cargo, PHP, etc.
+
+Optional workflow tools:
+
+- `tmux`, for Sidekick's configured mux backend.
+- Sidekick target CLIs if you use those mappings: `claude`, `opencode`, and `pi`.
+
 ## Options
 
 Leader and local leader are both `<Space>`.
