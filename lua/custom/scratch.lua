@@ -63,6 +63,6 @@ vim.api.nvim_create_autocmd('VimLeavePre', {
   end,
 })
 
-vim.keymap.set('n', '<leader>es', M.edit, { desc = '[E]dit [S]cratch File' })
+vim.keymap.set('n', '<leader>sef', M.edit, { desc = '[S]cratch [E]dit [F]ile' })
 
 return M
