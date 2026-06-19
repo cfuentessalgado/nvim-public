@@ -1,0 +1,28 @@
+vim.loader.enable()
+
+vim.g.mapleader = ' '
+vim.g.maplocalleader = ' '
+vim.g.have_nerd_font = true
+
+require 'custom.options'
+require 'custom.keymaps'
+require 'custom.scratch'
+require 'custom.pack'
+
+require 'plugins.guess_indent'
+require 'plugins.gitsigns'
+require 'plugins.whichkey'
+require 'plugins.colorscheme'
+require 'plugins.todo'
+require 'plugins.noice'
+require 'plugins.mini'
+require 'plugins.telescope'
+require 'plugins.lsp'
+require 'plugins.conform'
+require 'plugins.blink'
+require 'plugins.treesitter'
+require 'plugins.oil'
+require 'plugins.neogit'
+require 'plugins.undotree'
+require 'plugins.autopairs'
+require 'plugins.sidekick'
