@@ -50,38 +50,21 @@ local function plan_files(opts)
   opts = opts or {}
   opts.cwd = opts.cwd or vim.uv.cwd()
 
-  local files = {}
-  local seen = {}
-
-  local function add(path)
-    if vim.fn.filereadable(path) ~= 1 or seen[path] then return end
-    seen[path] = true
-    local display = vim.fn.fnamemodify(path, ':~:.')
-    table.insert(files, {
-      value = path,
-      path = path,
-      filename = path,
-      display = display,
-      ordinal = display,
-    })
+  local command
+  if vim.fn.executable 'rg' == 1 then
+    command = { 'rg', '--files', '--glob', 'plans/**', '--glob', '**/PLAN.md' }
+  elseif vim.fn.executable 'fd' == 1 then
+    command = { 'fd', '--type', 'f', '(^PLAN%.md$|^plans/)' }
+  else
+    command = { 'find', '.', '-type', 'f', '(', '-path', './plans/*', '-o', '-name', 'PLAN.md', ')' }
   end
-
-  for _, path in ipairs(vim.fn.globpath(opts.cwd, 'plans/**/*', true, true)) do
-    add(path)
-  end
-
-  for _, path in ipairs(vim.fn.globpath(opts.cwd, '**/PLAN.md', true, true)) do
-    add(path)
-  end
-
-  table.sort(files, function(a, b) return a.ordinal < b.ordinal end)
 
   require('telescope.pickers').new(opts, {
     prompt_title = 'Plan Files',
-    finder = require('telescope.finders').new_table {
-      results = files,
-      entry_maker = function(entry) return entry end,
-    },
+    finder = require('telescope.finders').new_oneshot_job(command, {
+      cwd = opts.cwd,
+      entry_maker = require('telescope.make_entry').gen_from_file(opts),
+    }),
     previewer = require('telescope.config').values.file_previewer(opts),
     sorter = require('telescope.config').values.generic_sorter(opts),
   }):find()
