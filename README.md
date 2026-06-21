@@ -121,9 +121,37 @@ Buffer-local after LSP attach:
 | `<leader>bf` / `<leader>df` | Format with conform |
 | `<leader>tb` | Toggle gitsigns current-line blame |
 | `<leader>gs` | Open Neogit |
+| `<leader>td` | Enter DeltaView |
+| `<leader>sd` | Open DeltaMenu / search diff |
 | `-` | Open parent directory with Oil |
 | `<leader>-` | Close Oil buffer |
 | `<leader>u` | Toggle UndoTree |
+
+### Reviewer
+
+Collect review comments in Neovim, yank them as Markdown, or send them to Sidekick.
+
+| Mode | Key | Action |
+|---|---|---|
+| Visual | `<leader>rc` | Add range comment |
+| Normal | `<leader>rc` | Add file comment |
+| Normal | `<leader>ry` | Yank full review |
+| Normal | `<leader>rs` | Send full review to Sidekick |
+| Normal | `<leader>rx` | Clear reviewer comments |
+
+### Annotating
+
+Mark selected text with lightweight annotation feedback for the current file, then yank/send that file's annotations.
+
+| Mode | Key | Action |
+|---|---|---|
+| Visual | `<leader>pd` | Mark selection as delete / scratch this idea |
+| Visual | `<leader>pc` | Add comment annotation |
+| Visual | `<leader>pg` | Mark selection as good / keep this |
+| Visual | `<leader>pq` | Add question annotation |
+| Normal | `<leader>py` | Yank current file annotations |
+| Normal | `<leader>ps` | Send current file annotations to Sidekick |
+| Normal | `<leader>px` | Clear current file annotations |
 
 ### Sidekick / AI
 
@@ -144,6 +172,7 @@ Buffer-local after LSP attach:
 
 - `blink.cmp` + `LuaSnip` + `friendly-snippets`
 - `conform.nvim`
+- `deltaview.nvim`
 - `gitsigns.nvim`
 - `guess-indent.nvim`
 - `lazydev.nvim`
@@ -156,6 +185,7 @@ Buffer-local after LSP attach:
 - `nvim-lspconfig`
 - `nvim-treesitter`
 - `oil.nvim`
+- local reviewer and annotating tools
 - `sidekick.nvim`
 - `telescope.nvim`, `telescope-ui-select.nvim`, optional `telescope-fzf-native.nvim`
 - `todo-comments.nvim`
