@@ -2,9 +2,45 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace 'reviewer_comments'
 local comments = {}
+local file_comment_windows = {}
 local next_comment_id = 0
+local patch_context_lines = 3
 
-vim.api.nvim_set_hl(0, 'ReviewerComment', { fg = '#c678dd', italic = true })
+local function hl(name)
+  local ok, value = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+  return ok and value or {}
+end
+
+local function setup_highlights()
+  local normal = hl 'Normal'
+  local normal_float = hl 'NormalFloat'
+  local float_border = hl 'FloatBorder'
+  local float_title = hl 'FloatTitle'
+  local diagnostic_hint = hl 'DiagnosticHint'
+  local directory = hl 'Directory'
+
+  -- Use the editor background instead of NormalFloat. Many themes make
+  -- NormalFloat black, which creates an obvious square behind rounded borders.
+  local bg = normal.bg
+  local fg = normal_float.fg or normal.fg
+  local border_fg = diagnostic_hint.fg or directory.fg or float_border.fg or fg
+  local title_fg = float_title.fg or fg
+
+  vim.api.nvim_set_hl(0, 'ReviewerComment', { fg = title_fg, italic = true })
+  vim.api.nvim_set_hl(0, 'ReviewerFloat', { fg = fg, bg = bg })
+  vim.api.nvim_set_hl(0, 'ReviewerFloatBorder', { fg = border_fg, bg = bg })
+  vim.api.nvim_set_hl(0, 'ReviewerFloatTitle', { fg = title_fg, bg = bg, bold = true })
+  vim.api.nvim_set_hl(0, 'ReviewerNotification', { fg = fg, bg = bg })
+  vim.api.nvim_set_hl(0, 'ReviewerNotificationBorder', { fg = border_fg, bg = bg })
+  vim.api.nvim_set_hl(0, 'ReviewerNotificationTitle', { fg = title_fg, bg = bg, bold = true })
+  vim.api.nvim_set_hl(0, 'ReviewerMuted', { fg = border_fg, bg = bg, italic = true })
+end
+
+setup_highlights()
+
+vim.api.nvim_create_autocmd('ColorScheme', {
+  callback = setup_highlights,
+})
 
 local function is_diff_buffer(bufnr)
   return vim.startswith(vim.api.nvim_buf_get_name(bufnr), 'deltaview://diff/')
@@ -87,7 +123,7 @@ local function ranges_overlap(a_start, a_end, b_start, b_end)
 end
 
 local function git_patch_for_range(filename, range)
-  local result = vim.system({ 'git', 'diff', '--', filename }, { text = true }):wait()
+  local result = vim.system({ 'git', 'diff', ('-U%d'):format(patch_context_lines), '--', filename }, { text = true }):wait()
 
   if result.code ~= 0 and result.code ~= 1 then
     return nil
@@ -102,11 +138,14 @@ local function git_patch_for_range(filename, range)
     if old_start then
       local hunk_header = line:gsub('^(@@.-@@).*$','%1')
 
+      local old_len = tonumber(old_count ~= '' and old_count or '1')
+      local new_len = tonumber(new_count ~= '' and new_count or '1')
+
       current = {
         old_start = tonumber(old_start),
-        old_end = tonumber(old_start) + (tonumber(old_count) or 1) - 1,
+        old_end = tonumber(old_start) + old_len - 1,
         new_start = tonumber(new_start),
-        new_end = tonumber(new_start) + (tonumber(new_count) or 1) - 1,
+        new_end = tonumber(new_start) + new_len - 1,
         lines = { hunk_header },
       }
       table.insert(hunks, current)
@@ -162,6 +201,171 @@ local function get_visual_text(bufnr, start_row, start_col, end_row, end_col, op
   return table.concat(lines, '\n')
 end
 
+local function close_file_comment_windows()
+  for _, winid in ipairs(file_comment_windows) do
+    if vim.api.nvim_win_is_valid(winid) then
+      vim.api.nvim_win_close(winid, true)
+    end
+  end
+
+  file_comment_windows = {}
+end
+
+local function visible_file_comments(bufnr)
+  local items = {}
+
+  for _, item in ipairs(vim.tbl_values(comments)) do
+    if item.scope == 'file' and item.bufnr == bufnr then
+      table.insert(items, item)
+    end
+  end
+
+  table.sort(items, function(a, b) return a.order < b.order end)
+
+  return items
+end
+
+local function render_file_comment_notifications(bufnr)
+  close_file_comment_windows()
+
+  local items = visible_file_comments(bufnr or vim.api.nvim_get_current_buf())
+
+  if vim.tbl_isempty(items) then
+    return
+  end
+
+  local width = math.min(48, math.max(24, math.floor(vim.o.columns * 0.28)))
+  local row = 1
+  local col = math.max(0, vim.o.columns - width - 2)
+
+  for _, item in ipairs(items) do
+    local lines = vim.split(item.comment, '\n', { plain = true })
+    local truncated = #lines > 8
+
+    if truncated then
+      lines = vim.list_slice(lines, 1, 7)
+      table.insert(lines, ('… %d more line(s)'):format(#vim.split(item.comment, '\n', { plain = true }) - 7))
+    end
+
+    local max_height = math.max(1, math.min(#lines, 8))
+    local bufnr_note = vim.api.nvim_create_buf(false, true)
+
+    vim.bo[bufnr_note].buftype = 'nofile'
+    vim.bo[bufnr_note].bufhidden = 'wipe'
+    vim.bo[bufnr_note].swapfile = false
+    vim.bo[bufnr_note].filetype = 'markdown'
+    vim.api.nvim_buf_set_lines(bufnr_note, 0, -1, false, lines)
+
+    local winid = vim.api.nvim_open_win(bufnr_note, false, {
+      relative = 'editor',
+      width = width,
+      height = max_height,
+      row = row,
+      col = col,
+      border = { '╭', '─', '╮', '│', '╯', '─', '╰', '│' },
+      title = ' 󰆈 File comment ',
+      title_pos = 'left',
+      style = 'minimal',
+      focusable = false,
+      zindex = 40,
+    })
+
+    vim.wo[winid].winhighlight = table.concat({
+      'NormalFloat:ReviewerNotification',
+      'FloatBorder:ReviewerNotificationBorder',
+      'FloatTitle:ReviewerNotificationTitle',
+    }, ',')
+    vim.wo[winid].winblend = 8
+    vim.wo[winid].wrap = true
+    vim.wo[winid].linebreak = true
+    table.insert(file_comment_windows, winid)
+
+    row = row + max_height + 2
+
+    if row >= vim.o.lines - 2 then
+      break
+    end
+  end
+end
+
+local function review_input(opts, callback)
+  opts = opts or {}
+
+  local width = math.min(math.floor(vim.o.columns * 0.7), 90)
+  local height = 3
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  local winid
+  local closed = false
+
+  local function resize()
+    if not vim.api.nvim_win_is_valid(winid) then
+      return
+    end
+
+    local line_count = math.max(1, vim.api.nvim_buf_line_count(bufnr))
+    vim.api.nvim_win_set_height(winid, math.min(math.max(line_count, height), 12))
+  end
+
+  local function close(value)
+    if closed then
+      return
+    end
+
+    closed = true
+
+    if vim.api.nvim_win_is_valid(winid) then
+      vim.api.nvim_win_close(winid, true)
+    end
+
+    callback(value)
+  end
+
+  local function submit()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local value = vim.trim(table.concat(lines, '\n'))
+    close(value ~= '' and value or nil)
+  end
+
+  vim.bo[bufnr].buftype = 'nofile'
+  vim.bo[bufnr].bufhidden = 'wipe'
+  vim.bo[bufnr].swapfile = false
+  vim.bo[bufnr].filetype = 'markdown'
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { '' })
+
+  winid = vim.api.nvim_open_win(bufnr, true, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    border = { '╭', '─', '╮', '│', '╯', '─', '╰', '│' },
+    title = opts.prompt or 'Review comment',
+    title_pos = 'center',
+    style = 'minimal',
+  })
+
+  vim.wo[winid].winhighlight = table.concat({
+    'NormalFloat:ReviewerFloat',
+    'FloatBorder:ReviewerFloatBorder',
+    'FloatTitle:ReviewerFloatTitle',
+  }, ',')
+  vim.wo[winid].winblend = 8
+  vim.wo[winid].wrap = true
+  vim.wo[winid].linebreak = true
+
+  vim.keymap.set({ 'n', 'i' }, '<C-s>', submit, { buffer = bufnr, desc = 'Submit review comment' })
+  vim.keymap.set('n', '<CR>', submit, { buffer = bufnr, desc = 'Submit review comment' })
+  vim.keymap.set('n', 'q', function() close(nil) end, { buffer = bufnr, desc = 'Cancel review comment' })
+  vim.keymap.set('n', '<Esc>', function() close(nil) end, { buffer = bufnr, desc = 'Cancel review comment' })
+
+  vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI' }, {
+    buffer = bufnr,
+    callback = resize,
+  })
+
+  vim.cmd.startinsert()
+end
+
 local function get_visual_range()
   local mode = vim.fn.visualmode()
   local start_pos = vim.fn.getpos "'<"
@@ -195,7 +399,7 @@ function M.add_comment()
       and (git_patch_for_range(filename_for(bufnr), source_range) or get_visual_text(bufnr, start_row, start_col, end_row, end_col, { diff_markers = true }))
     or get_visual_text(bufnr, start_row, start_col, end_row, end_col)
 
-  vim.ui.input({ prompt = 'Review comment: ' }, function(comment)
+  review_input({ prompt = 'Review comment 󰆈  (<C-s>/<CR> submit, q/<Esc> cancel)' }, function(comment)
     if not comment or comment == '' then
       return
     end
@@ -222,8 +426,11 @@ function M.add_comment()
       return
     end
 
+    next_comment_id = next_comment_id + 1
+
     comments[id] = {
       id = id,
+      order = next_comment_id,
       bufnr = bufnr,
       scope = diff_buffer and 'diff_range' or 'range',
       filename = filename_for(bufnr),
@@ -238,7 +445,7 @@ end
 function M.add_file_comment()
   local bufnr = vim.api.nvim_get_current_buf()
 
-  vim.ui.input({ prompt = 'Review file comment: ' }, function(comment)
+  review_input({ prompt = 'Review file comment 󰆈  (<C-s>/<CR> submit, q/<Esc> cancel)' }, function(comment)
     if not comment or comment == '' then
       return
     end
@@ -248,105 +455,122 @@ function M.add_file_comment()
 
     comments[id] = {
       id = id,
+      order = next_comment_id,
       bufnr = bufnr,
       scope = 'file',
       filename = filename_for(bufnr),
       comment = comment,
     }
 
+    render_file_comment_notifications(bufnr)
     vim.notify('Added reviewer file comment', vim.log.levels.INFO)
   end)
 end
 
-local function ordered_comments()
-  local ordered = vim.tbl_values(comments)
+local function grouped_comments()
+  local files = {}
+  local by_filename = {}
 
-  table.sort(ordered, function(a, b)
-    if a.filename ~= b.filename then
-      return a.filename < b.filename
+  for _, item in ipairs(vim.tbl_values(comments)) do
+    local group = by_filename[item.filename]
+
+    if not group then
+      group = { filename = item.filename, order = item.order, file_comments = {}, comments = {} }
+      by_filename[item.filename] = group
+      table.insert(files, group)
+    else
+      group.order = math.min(group.order, item.order)
     end
 
-    local a_line = a.range_start and a.range_start.line or 0
-    local b_line = b.range_start and b.range_start.line or 0
-
-    if a_line ~= b_line then
-      return a_line < b_line
+    if item.scope == 'file' then
+      table.insert(group.file_comments, item)
+    else
+      table.insert(group.comments, item)
     end
+  end
 
-    local a_column = a.range_start and a.range_start.column or 0
-    local b_column = b.range_start and b.range_start.column or 0
+  table.sort(files, function(a, b) return a.order < b.order end)
 
-    return a_column < b_column
-  end)
+  for _, group in ipairs(files) do
+    table.sort(group.file_comments, function(a, b) return a.order < b.order end)
+    table.sort(group.comments, function(a, b) return a.order < b.order end)
+  end
 
-  return ordered
+  return files
 end
 
 function M.render_review()
-  local ordered = ordered_comments()
+  local files = grouped_comments()
+  local count = #vim.tbl_values(comments)
 
-  if vim.tbl_isempty(ordered) then
+  if count == 0 then
     return nil, 0
   end
 
   local lines = {
     '# Review',
     '',
-    'Address the following comments',
+    'Address the following comments.',
     '',
   }
 
-  local current_file
+  for _, group in ipairs(files) do
+    table.insert(lines, ('## `%s`'):format(group.filename))
+    table.insert(lines, '')
 
-  for _, item in ipairs(ordered) do
-    if item.filename ~= current_file then
-      current_file = item.filename
-      table.insert(lines, ('## `%s`'):format(current_file))
+    for _, item in ipairs(group.file_comments) do
+      table.insert(lines, '### File comment')
+      table.insert(lines, '')
+      table.insert(lines, '```markdown')
+      table.insert(lines, item.comment)
+      table.insert(lines, '```')
       table.insert(lines, '')
     end
 
-    if item.scope == 'file' then
-      table.insert(lines, '### File comment')
-      table.insert(lines, '')
-      table.insert(lines, item.comment)
-      table.insert(lines, '')
-    elseif item.scope == 'diff_range' then
-      table.insert(
-        lines,
-        ('### Diff range `%d:%d-%d:%d`'):format(
-          item.range_start.line,
-          item.range_start.column,
-          item.range_end.line,
-          item.range_end.column
+    for _, item in ipairs(group.comments) do
+      if item.scope == 'diff_range' then
+        table.insert(
+          lines,
+          ('### `%s:diff:%d:%d-%d:%d`'):format(
+            item.filename,
+            item.range_start.line,
+            item.range_start.column,
+            item.range_end.line,
+            item.range_end.column
+          )
         )
-      )
-      table.insert(lines, '')
-      table.insert(lines, 'Comment:')
-      table.insert(lines, item.comment)
-      table.insert(lines, '')
-      table.insert(lines, 'Patch context:')
-      table.insert(lines, '')
-      table.insert(lines, '```diff')
-      table.insert(lines, item.patch or '')
-      table.insert(lines, '```')
-      table.insert(lines, '')
-    else
-      table.insert(
-        lines,
-        ('### Range `%d:%d-%d:%d`'):format(
-          item.range_start.line,
-          item.range_start.column,
-          item.range_end.line,
-          item.range_end.column
+        table.insert(lines, '')
+        table.insert(lines, '```markdown')
+        table.insert(lines, item.comment)
+        table.insert(lines, '```')
+        table.insert(lines, '')
+        table.insert(lines, 'Patch context:')
+        table.insert(lines, '')
+        table.insert(lines, '```diff')
+        table.insert(lines, item.patch or '')
+        table.insert(lines, '```')
+        table.insert(lines, '')
+      else
+        table.insert(
+          lines,
+          ('### `%s:range:%d:%d-%d:%d`'):format(
+            item.filename,
+            item.range_start.line,
+            item.range_start.column,
+            item.range_end.line,
+            item.range_end.column
+          )
         )
-      )
-      table.insert(lines, '')
-      table.insert(lines, item.comment)
-      table.insert(lines, '')
+        table.insert(lines, '')
+        table.insert(lines, '```markdown')
+        table.insert(lines, item.comment)
+        table.insert(lines, '```')
+        table.insert(lines, '')
+      end
     end
   end
 
-  return table.concat(lines, '\n'), #ordered
+  return table.concat(lines, '\n'), count
 end
 
 function M.clear_comments()
@@ -357,6 +581,7 @@ function M.clear_comments()
   end
 
   comments = {}
+  close_file_comment_windows()
 end
 
 function M.clear_review()
@@ -420,6 +645,12 @@ end, { desc = 'Reviewer: add range comment' })
 
 vim.keymap.set('n', '<leader>rc', M.add_file_comment, { desc = 'Reviewer: add file comment' })
 vim.keymap.set('n', '<leader>rx', M.clear_review, { desc = 'Reviewer: clear comments' })
+
+vim.api.nvim_create_autocmd({ 'BufEnter', 'VimResized' }, {
+  callback = function()
+    render_file_comment_notifications(vim.api.nvim_get_current_buf())
+  end,
+})
 vim.keymap.set('n', '<leader>ry', M.yank_review, { desc = 'Reviewer: yank review' })
 vim.keymap.set('n', '<leader>rs', M.send_review_to_sidekick, { desc = 'Reviewer: send review to Sidekick' })
 
