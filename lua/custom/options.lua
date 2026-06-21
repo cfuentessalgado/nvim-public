@@ -19,6 +19,10 @@ vim.o.cursorline = false
 vim.o.scrolloff = 8
 vim.o.sidescrolloff = 8
 vim.o.wrap = false
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'markdown',
+  callback = function() vim.wo.wrap = true end,
+})
 vim.o.numberwidth = 2
 vim.o.smartindent = true
 vim.o.expandtab = true
