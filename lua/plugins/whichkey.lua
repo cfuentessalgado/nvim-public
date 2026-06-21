@@ -10,7 +10,7 @@ require('which-key').setup {
     { '<leader>c', group = '[C]ode' },
     { '<leader>d', group = '[D]ocument' },
     { '<leader>g', group = '[G]it' },
-    { '<leader>r', group = '[R]ename' },
+    { '<leader>r', group = '[R]eview / Feedback' },
     { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
     { '<leader>w', group = '[W]orkspace' },
     { '<leader>t', group = '[T]oggle' },

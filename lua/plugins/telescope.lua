@@ -46,6 +46,47 @@ vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Fi
 vim.keymap.set('n', '<leader>sx', builtin.commands, { desc = '[S]earch Commands' })
 vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = 'Find existing buffers' })
 
+local function plan_files(opts)
+  opts = opts or {}
+  opts.cwd = opts.cwd or vim.uv.cwd()
+
+  local files = {}
+  local seen = {}
+
+  local function add(path)
+    if vim.fn.filereadable(path) ~= 1 or seen[path] then return end
+    seen[path] = true
+    local display = vim.fn.fnamemodify(path, ':~:.')
+    table.insert(files, {
+      value = path,
+      path = path,
+      filename = path,
+      display = display,
+      ordinal = display,
+    })
+  end
+
+  for _, path in ipairs(vim.fn.globpath(opts.cwd, 'plans/**/*', true, true)) do
+    add(path)
+  end
+
+  for _, path in ipairs(vim.fn.globpath(opts.cwd, '**/PLAN.md', true, true)) do
+    add(path)
+  end
+
+  table.sort(files, function(a, b) return a.ordinal < b.ordinal end)
+
+  require('telescope.pickers').new(opts, {
+    prompt_title = 'Plan Files',
+    finder = require('telescope.finders').new_table {
+      results = files,
+      entry_maker = function(entry) return entry end,
+    },
+    previewer = require('telescope.config').values.file_previewer(opts),
+    sorter = require('telescope.config').values.generic_sorter(opts),
+  }):find()
+end
+
 local function live_multigrep(opts)
   opts = opts or {}
   opts.cwd = opts.cwd or vim.uv.cwd()
@@ -81,6 +122,7 @@ vim.keymap.set('n', '<leader>s/', function()
   builtin.live_grep { grep_open_files = true, prompt_title = 'Live Grep in Open Files' }
 end, { desc = '[S]earch in Open Files' })
 vim.keymap.set('n', '<leader>sn', function() builtin.find_files { cwd = vim.fn.stdpath 'config' } end, { desc = '[S]earch [N]eovim files' })
+vim.keymap.set('n', '<leader>sp', plan_files, { desc = '[S]earch [P]lan files' })
 
 vim.api.nvim_create_autocmd('LspAttach', {
   group = vim.api.nvim_create_augroup('telescope-lsp-attach', { clear = true }),
