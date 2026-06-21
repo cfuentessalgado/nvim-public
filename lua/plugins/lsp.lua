@@ -52,7 +52,7 @@ vim.api.nvim_create_autocmd('LspAttach', {
       map('<leader>th', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, '[T]oggle Inlay [H]ints')
     end
 
-    map('<leader>td', function()
+    map('<leader>tD', function()
       local current = vim.diagnostic.config().virtual_text
       vim.diagnostic.config { virtual_text = not current }
     end, '[T]oggle [D]iagnostic virtual text')

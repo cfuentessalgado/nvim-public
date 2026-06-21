@@ -41,7 +41,6 @@ vim.keymap.set('n', '<leader>f', builtin.git_files, { desc = 'Search Git [F]iles
 vim.keymap.set('n', '<leader>sc', builtin.git_status, { desc = 'Search [C]hanged' })
 vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
 vim.keymap.set({ 'n', 'v' }, '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
 vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
 vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files' })
 vim.keymap.set('n', '<leader>sx', builtin.commands, { desc = '[S]earch Commands' })
