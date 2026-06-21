@@ -4,8 +4,73 @@ local ns = vim.api.nvim_create_namespace 'feedback_items'
 local items = {}
 local file_comment_windows = {}
 local next_id = 0
-local patch_context_lines = 3
+local patch_context_lines = 0
 local did_setup = false
+local state_loaded = false
+
+local function project_root()
+  local result = vim.system({ 'git', 'rev-parse', '--show-toplevel' }, { text = true }):wait()
+  if result.code == 0 then
+    local root = vim.trim(result.stdout or '')
+    if root ~= '' then return vim.fs.normalize(root) end
+  end
+  return vim.fs.normalize(vim.loop.cwd() or vim.fn.getcwd())
+end
+
+local function storage_path()
+  local dir = vim.fs.joinpath(vim.fn.stdpath 'data', 'feedback')
+  local key = vim.fn.sha256(project_root())
+  return dir, vim.fs.joinpath(dir, key .. '.json')
+end
+
+local function serializable_item(item)
+  return {
+    id = item.id,
+    order = item.order,
+    kind = item.kind,
+    scope = item.scope,
+    filename = item.filename,
+    range_start = item.range_start,
+    range_end = item.range_end,
+    text = item.text,
+    patch = item.patch,
+    comment = item.comment,
+  }
+end
+
+local function save_state()
+  if not state_loaded then return end
+  local dir, path = storage_path()
+  if #items == 0 then
+    pcall(vim.fn.delete, path)
+    return
+  end
+  local state_items = {}
+  for _, item in ipairs(items) do table.insert(state_items, serializable_item(item)) end
+  local encoded = vim.json.encode { version = 1, root = project_root(), next_id = next_id, items = state_items }
+  vim.fn.mkdir(dir, 'p')
+  local tmp = path .. '.tmp'
+  vim.fn.writefile({ encoded }, tmp)
+  vim.fn.rename(tmp, path)
+end
+
+local function load_state()
+  local _, path = storage_path()
+  state_loaded = true
+  if vim.fn.filereadable(path) ~= 1 then return end
+  local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), '\n'))
+  if not ok or type(decoded) ~= 'table' or decoded.version ~= 1 or type(decoded.items) ~= 'table' then return end
+  items = {}
+  next_id = tonumber(decoded.next_id) or 0
+  for _, item in ipairs(decoded.items) do
+    if type(item) == 'table' and item.kind and item.scope and item.filename then
+      item.bufnr = nil
+      item.extmarks = {}
+      table.insert(items, item)
+      next_id = math.max(next_id, tonumber(item.id) or 0, tonumber(item.order) or 0)
+    end
+  end
+end
 
 local function hl(name)
   local ok, value = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
@@ -112,7 +177,7 @@ local function git_patch_for_range(filename, range)
     if old_start then
       local old_len = tonumber(old_count ~= '' and old_count or '1')
       local new_len = tonumber(new_count ~= '' and new_count or '1')
-      current = { old_start = tonumber(old_start), old_end = tonumber(old_start) + old_len - 1, new_start = tonumber(new_start), new_end = tonumber(new_start) + new_len - 1, lines = { line:gsub('^(@@.-@@).*$', '%1') } }
+      current = { old_start = tonumber(old_start), old_end = tonumber(old_start) + old_len - 1, new_start = tonumber(new_start), new_end = tonumber(new_start) + new_len - 1, lines = { line } }
       table.insert(hunks, current)
     elseif current then
       table.insert(current.lines, line)
@@ -220,6 +285,7 @@ local function add_item(item)
   item.id = item.id or next_id
   item.order = next_id
   table.insert(items, item)
+  save_state()
 end
 
 function M.add_range_feedback(kind)
@@ -251,11 +317,45 @@ local function close_file_comment_windows()
   file_comment_windows = {}
 end
 
+local function item_matches_buffer(item, bufnr)
+  return item.filename == filename_for(bufnr)
+end
+
+local function range_mark_is_valid(item)
+  if not item.bufnr or not vim.api.nvim_buf_is_valid(item.bufnr) then return false end
+  for _, extmark_id in ipairs(item.extmarks or {}) do
+    local mark = vim.api.nvim_buf_get_extmark_by_id(item.bufnr, ns, extmark_id, {})
+    if mark and mark[1] then return true end
+  end
+  return false
+end
+
+local function restore_buffer_marks(bufnr)
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  for _, item in ipairs(items) do
+    if item.scope == 'file' and item_matches_buffer(item, bufnr) then
+      item.bufnr = bufnr
+    elseif item.scope ~= 'file' and item_matches_buffer(item, bufnr) and item.range_start and item.range_end then
+      if not range_mark_is_valid(item) then
+        local start_row = math.max((tonumber(item.range_start.line) or 1) - 1, 0)
+        local end_row = math.max((tonumber(item.range_end.line) or 1) - 1, 0)
+        if start_row < line_count and end_row < line_count then
+          local start_col = math.max((tonumber(item.range_start.column) or 1) - 1, 0)
+          local end_col = math.max((tonumber(item.range_end.column) or 1) - 1, 0)
+          local label = item.comment or (meta[item.kind] and meta[item.kind].label) or item.kind
+          item.bufnr = bufnr
+          item.extmarks = add_range_mark(bufnr, start_row, start_col, end_row, end_col, item.kind, label)
+        end
+      end
+    end
+  end
+end
+
 local function render_file_comment_notifications(bufnr)
   close_file_comment_windows()
   local visible = {}
   for _, item in ipairs(items) do
-    if item.scope == 'file' and item.bufnr == bufnr then table.insert(visible, item) end
+    if item.scope == 'file' and item_matches_buffer(item, bufnr) then item.bufnr = bufnr; table.insert(visible, item) end
   end
   if vim.tbl_isempty(visible) then return end
   table.sort(visible, function(a, b) return a.order < b.order end)
@@ -304,7 +404,20 @@ end
 
 function M.render_review()
   if #items == 0 then return nil, 0 end
-  local lines = { '# Review Feedback', '', 'Address the following feedback.', '', 'Kinds:', '- Delete: remove/reject/scratch this.', '- Question: answer or resolve before changing related code.', '- Good: preserve or build on this.', '- Comment: address as normal feedback.', '' }
+  local lines = {
+    '# Review Feedback',
+    '',
+    'Address the following feedback.',
+    '',
+    'Before applying range feedback, verify that the selected text or patch context still corresponds to the current file. If the file has changed and the feedback no longer matches the referenced code, treat it as historical context only. If it is no longer relevant, ignore it rather than applying changes to unrelated code.',
+    '',
+    'Kinds:',
+    '- Delete: remove/reject/scratch this.',
+    '- Question: answer or resolve before changing related code.',
+    '- Good: preserve or build on this.',
+    '- Comment: address as normal feedback.',
+    '',
+  }
   for _, group in ipairs(grouped_items()) do
     table.insert(lines, ('## `%s`'):format(group.filename)); table.insert(lines, '')
     for _, item in ipairs(group.items) do
@@ -330,12 +443,13 @@ end
 
 function M.clear()
   for _, item in ipairs(items) do
-    if item.scope ~= 'file' and vim.api.nvim_buf_is_valid(item.bufnr) then
+    if item.scope ~= 'file' and item.bufnr and vim.api.nvim_buf_is_valid(item.bufnr) then
       for _, extmark_id in ipairs(item.extmarks or {}) do pcall(vim.api.nvim_buf_del_extmark, item.bufnr, ns, extmark_id) end
     end
   end
   items = {}
   close_file_comment_windows()
+  save_state()
 end
 
 function M.clear_feedback()
@@ -368,6 +482,8 @@ function M.setup()
   if did_setup then return end
   did_setup = true
   setup_highlights()
+  load_state()
+  restore_buffer_marks(vim.api.nvim_get_current_buf())
   vim.api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
   vim.keymap.set('x', '<leader>rc', function() vim.cmd 'normal! \27'; vim.schedule(function() M.add_range_feedback 'comment' end) end, { desc = 'Feedback: add range comment' })
   vim.keymap.set('x', '<leader>rq', function() vim.cmd 'normal! \27'; vim.schedule(function() M.add_range_feedback 'question' end) end, { desc = 'Feedback: add question' })
@@ -377,7 +493,11 @@ function M.setup()
   vim.keymap.set('n', '<leader>ry', M.yank_feedback, { desc = 'Feedback: yank all' })
   vim.keymap.set('n', '<leader>rs', M.send_feedback_to_sidekick, { desc = 'Feedback: send all to Sidekick' })
   vim.keymap.set('n', '<leader>rx', M.clear_feedback, { desc = 'Feedback: clear all' })
-  vim.api.nvim_create_autocmd({ 'BufEnter', 'VimResized' }, { callback = function() render_file_comment_notifications(vim.api.nvim_get_current_buf()) end })
+  vim.api.nvim_create_autocmd({ 'BufEnter', 'BufReadPost', 'VimResized' }, { callback = function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    restore_buffer_marks(bufnr)
+    render_file_comment_notifications(bufnr)
+  end })
 end
 
 return M

@@ -127,31 +127,20 @@ Buffer-local after LSP attach:
 | `<leader>-` | Close Oil buffer |
 | `<leader>u` | Toggle UndoTree |
 
-### Reviewer
+### Feedback / Reviewer
 
-Collect review comments in Neovim, yank them as Markdown, or send them to Sidekick.
+Collect review feedback in Neovim, yank it as Markdown, or send it to Sidekick. Feedback persists per Git repo under Neovim's data directory until it is sent or cleared. Rendered feedback tells the assistant to verify selected text/patch context against the current file before applying stale range feedback.
 
 | Mode | Key | Action |
 |---|---|---|
 | Visual | `<leader>rc` | Add range comment |
+| Visual | `<leader>rq` | Add range question |
+| Visual | `<leader>rd` | Mark selection as delete / scratch this idea |
+| Visual | `<leader>rg` | Mark selection as good / keep this |
 | Normal | `<leader>rc` | Add file comment |
 | Normal | `<leader>ry` | Yank full review |
-| Normal | `<leader>rs` | Send full review to Sidekick |
-| Normal | `<leader>rx` | Clear reviewer comments |
-
-### Annotating
-
-Mark selected text with lightweight annotation feedback for the current file, then yank/send that file's annotations.
-
-| Mode | Key | Action |
-|---|---|---|
-| Visual | `<leader>pd` | Mark selection as delete / scratch this idea |
-| Visual | `<leader>pc` | Add comment annotation |
-| Visual | `<leader>pg` | Mark selection as good / keep this |
-| Visual | `<leader>pq` | Add question annotation |
-| Normal | `<leader>py` | Yank current file annotations |
-| Normal | `<leader>ps` | Send current file annotations to Sidekick |
-| Normal | `<leader>px` | Clear current file annotations |
+| Normal | `<leader>rs` | Send full review to Sidekick and clear feedback |
+| Normal | `<leader>rx` | Clear feedback |
 
 ### Sidekick / AI
 
