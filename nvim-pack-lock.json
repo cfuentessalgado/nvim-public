@@ -10,6 +10,10 @@
       "src": "https://github.com/saghen/blink.cmp",
       "version": "1.0.0 - 2.0.0"
     },
+    "codediff.nvim": {
+      "rev": "7608f3b436ce1f84a4888f75e53079caa981a2e9",
+      "src": "https://github.com/esmuellert/codediff.nvim"
+    },
     "conform.nvim": {
       "rev": "619363c30309d29ffa631e67c8183f2a72caa373",
       "src": "https://github.com/stevearc/conform.nvim"
@@ -17,6 +21,10 @@
     "deltaview.nvim": {
       "rev": "fc05322417beb847d729ce606918a6facd8721f9",
       "src": "https://github.com/kokusenz/deltaview.nvim"
+    },
+    "diffs.nvim": {
+      "rev": "7ab445c39224160203ae692d3c883e2f51f2d442",
+      "src": "https://github.com/barrettruth/diffs.nvim"
     },
     "diffview.nvim": {
       "rev": "4516612fe98ff56ae0415a259ff6361a89419b0a",

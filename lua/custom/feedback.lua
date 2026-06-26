@@ -4,7 +4,6 @@ local ns = vim.api.nvim_create_namespace 'feedback_items'
 local items = {}
 local file_comment_windows = {}
 local next_id = 0
-local patch_context_lines = 0
 local did_setup = false
 local state_loaded = false
 
@@ -33,7 +32,6 @@ local function serializable_item(item)
     range_start = item.range_start,
     range_end = item.range_end,
     text = item.text,
-    patch = item.patch,
     comment = item.comment,
   }
 end
@@ -125,71 +123,7 @@ end
 local function filename_for(bufnr)
   local name = vim.api.nvim_buf_get_name(bufnr)
   if name == '' then return '[No Name]' end
-  if vim.startswith(name, 'deltaview://diff/') then
-    local path = name:match '^deltaview://diff/(.-)%s+'
-    if path then
-      if vim.startswith(path, '//') then path = path:sub(2) end
-      return vim.fn.fnamemodify(path, ':.')
-    end
-  end
   return vim.fn.fnamemodify(name, ':.')
-end
-
-local function is_diff_buffer(bufnr)
-  return vim.startswith(vim.api.nvim_buf_get_name(bufnr), 'deltaview://diff/')
-end
-
-local function diff_marker_for(bufnr, lnum)
-  local map = vim.b[bufnr].delta_line_map and vim.b[bufnr].delta_line_map[lnum]
-  if not map then return nil end
-  return ({ added = '+', removed = '-', context = ' ' })[map.type]
-end
-
-local function diff_source_range(bufnr, start_row, end_row)
-  local line_map = vim.b[bufnr].delta_line_map or {}
-  local range = { old_start = nil, old_end = nil, new_start = nil, new_end = nil }
-  for lnum = start_row + 1, end_row + 1 do
-    local map = line_map[lnum]
-    if map then
-      if map.old then
-        range.old_start = math.min(range.old_start or map.old, map.old)
-        range.old_end = math.max(range.old_end or map.old, map.old)
-      end
-      if map.new then
-        range.new_start = math.min(range.new_start or map.new, map.new)
-        range.new_end = math.max(range.new_end or map.new, map.new)
-      end
-    end
-  end
-  return range
-end
-
-local function ranges_overlap(a_start, a_end, b_start, b_end)
-  return a_start and a_end and b_start and b_end and a_start <= b_end and b_start <= a_end
-end
-
-local function git_patch_for_range(filename, range)
-  local result = vim.system({ 'git', 'diff', ('-U%d'):format(patch_context_lines), '--', filename }, { text = true }):wait()
-  if result.code ~= 0 and result.code ~= 1 then return nil end
-  local hunks, current = {}, nil
-  for _, line in ipairs(vim.split(result.stdout or '', '\n', { plain = true })) do
-    local old_start, old_count, new_start, new_count = line:match '^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@'
-    if old_start then
-      local old_len = tonumber(old_count ~= '' and old_count or '1')
-      local new_len = tonumber(new_count ~= '' and new_count or '1')
-      current = { old_start = tonumber(old_start), old_end = tonumber(old_start) + old_len - 1, new_start = tonumber(new_start), new_end = tonumber(new_start) + new_len - 1, lines = { line } }
-      table.insert(hunks, current)
-    elseif current then
-      table.insert(current.lines, line)
-    end
-  end
-  local selected = {}
-  for _, hunk in ipairs(hunks) do
-    if ranges_overlap(range.old_start, range.old_end, hunk.old_start, hunk.old_end) or ranges_overlap(range.new_start, range.new_end, hunk.new_start, hunk.new_end) then
-      vim.list_extend(selected, hunk.lines)
-    end
-  end
-  return not vim.tbl_isempty(selected) and table.concat(selected, '\n') or nil
 end
 
 local function get_visual_range()
@@ -209,17 +143,9 @@ local function get_visual_range()
   return start_row, start_col, end_row, end_col
 end
 
-local function selected_text(bufnr, start_row, start_col, end_row, end_col, opts)
-  opts = opts or {}
+local function selected_text(bufnr, start_row, start_col, end_row, end_col)
   local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
   if vim.tbl_isempty(lines) then return '' end
-  if opts.diff_markers then
-    for index, line in ipairs(lines) do
-      local marker = diff_marker_for(bufnr, start_row + index)
-      if marker then lines[index] = marker .. line end
-    end
-    return table.concat(lines, '\n')
-  end
   if #lines == 1 then
     lines[1] = string.sub(lines[1], start_col + 1, math.max(start_col + 1, end_col))
   else
@@ -291,16 +217,14 @@ end
 function M.add_range_feedback(kind)
   local bufnr = vim.api.nvim_get_current_buf()
   local start_row, start_col, end_row, end_col = get_visual_range()
-  local diff_buffer = is_diff_buffer(bufnr)
-  local source_range = diff_buffer and diff_source_range(bufnr, start_row, end_row) or nil
-  local text = diff_buffer and selected_text(bufnr, start_row, start_col, end_row, end_col, { diff_markers = true }) or selected_text(bufnr, start_row, start_col, end_row, end_col)
-  local patch = diff_buffer and git_patch_for_range(filename_for(bufnr), source_range) or nil
+  local text = selected_text(bufnr, start_row, start_col, end_row, end_col)
+  local filename = filename_for(bufnr)
 
   local function finish(comment)
     if (kind == 'comment' or kind == 'question') and not comment then return end
     local label = comment or meta[kind].label
     local extmarks = add_range_mark(bufnr, start_row, start_col, end_row, end_col, kind, label)
-    add_item { kind = kind, scope = diff_buffer and 'diff_range' or 'range', bufnr = bufnr, filename = filename_for(bufnr), range_start = { line = start_row + 1, column = start_col + 1 }, range_end = { line = end_row + 1, column = end_col + 1 }, text = text, patch = patch, comment = comment, extmarks = extmarks }
+    add_item { kind = kind, scope = 'range', bufnr = bufnr, filename = filename, range_start = { line = start_row + 1, column = start_col + 1 }, range_end = { line = end_row + 1, column = end_col + 1 }, text = text, comment = comment, extmarks = extmarks }
   end
 
   if kind == 'comment' or kind == 'question' then
@@ -404,37 +328,28 @@ end
 
 function M.render_review()
   if #items == 0 then return nil, 0 end
-  local lines = {
-    '# Review Feedback',
-    '',
-    'Address the following feedback.',
-    '',
-    'Before applying range feedback, verify that the selected text or patch context still corresponds to the current file. If the file has changed and the feedback no longer matches the referenced code, treat it as historical context only. If it is no longer relevant, ignore it rather than applying changes to unrelated code.',
-    '',
-    'Kinds:',
-    '- Delete: remove/reject/scratch this.',
-    '- Question: answer or resolve before changing related code.',
-    '- Good: preserve or build on this.',
-    '- Comment: address as normal feedback.',
-    '',
-  }
+  local lines = { '# Feedback', '' }
   for _, group in ipairs(grouped_items()) do
-    table.insert(lines, ('## `%s`'):format(group.filename)); table.insert(lines, '')
     for _, item in ipairs(group.items) do
       local title = meta[item.kind].title or item.kind
-      if item.scope == 'file' then
-        table.insert(lines, ('### %s'):format(title))
+      local location = group.filename
+      if item.scope ~= 'file' then location = ('%s:%d-%d'):format(group.filename, item.range_start.line, item.range_end.line) end
+      local message = item.comment
+      if item.kind == 'delete' then message = message or 'I dont like this.' end
+      if item.kind == 'good' then message = message or 'I like this.' end
+      if item.kind == 'file_comment' then title = 'File' end
+      if item.kind == 'delete' or item.kind == 'good' then
+        table.insert(lines, ('- %s:'):format(location))
+        table.insert(lines, message)
       else
-        table.insert(lines, ('### %s: lines %d-%d'):format(title, item.range_start.line, item.range_end.line))
+        local entry = ('- %s %s'):format(title, location)
+        if message and message ~= '' then entry = entry .. ': ' .. message end
+        table.insert(lines, entry)
       end
-      table.insert(lines, '')
-      if item.comment then
-        table.insert(lines, title .. ':'); table.insert(lines, ''); table.insert(lines, '```markdown'); table.insert(lines, item.comment); table.insert(lines, '```'); table.insert(lines, '')
-      end
-      if item.patch then
-        table.insert(lines, 'Patch context:'); table.insert(lines, ''); table.insert(lines, '```diff'); table.insert(lines, item.patch); table.insert(lines, '```'); table.insert(lines, '')
-      elseif item.text and item.text ~= '' then
-        table.insert(lines, 'Selected text:'); table.insert(lines, ''); table.insert(lines, '```'); table.insert(lines, item.text); table.insert(lines, '```'); table.insert(lines, '')
+      if item.scope ~= 'file' and item.text and item.text ~= '' then
+        table.insert(lines, '  ```')
+        for _, text_line in ipairs(vim.split(item.text, '\n', { plain = true })) do table.insert(lines, '  ' .. text_line) end
+        table.insert(lines, '  ```')
       end
     end
   end
