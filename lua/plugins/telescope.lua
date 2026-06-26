@@ -52,11 +52,28 @@ local function plan_files(opts)
 
   local command
   if vim.fn.executable 'rg' == 1 then
-    command = { 'rg', '--files', '--glob', 'plans/**', '--glob', '**/PLAN.md' }
+    command = {
+      'rg',
+      '--files',
+      '--hidden',
+      '--no-ignore',
+      '--glob',
+      'plans/**',
+      '--glob',
+      '.plans/**',
+      '--glob',
+      '**/plans/**',
+      '--glob',
+      '**/.plans/**',
+      '--glob',
+      'PLAN.md',
+      '--glob',
+      '**/PLAN.md',
+    }
   elseif vim.fn.executable 'fd' == 1 then
-    command = { 'fd', '--type', 'f', '(^PLAN%.md$|^plans/)' }
+    command = { 'fd', '--type', 'f', '--hidden', '--no-ignore', '(^|/)(PLAN\\.md|\\.?plans/.*)$' }
   else
-    command = { 'find', '.', '-type', 'f', '(', '-path', './plans/*', '-o', '-name', 'PLAN.md', ')' }
+    command = { 'find', '.', '-type', 'f', '(', '-path', '*/plans/*', '-o', '-path', '*/.plans/*', '-o', '-name', 'PLAN.md', ')' }
   end
 
   require('telescope.pickers').new(opts, {
