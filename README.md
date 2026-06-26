@@ -67,10 +67,10 @@ Notable defaults:
 | Normal | `<leader>q` | Open diagnostic quickfix/location list |
 | Normal | `<leader>e` | Toggle Neo-tree file tree |
 | Terminal | `<Esc><Esc>` | Exit terminal mode |
-| Normal | `<C-h>` / `<C-l>` | Move focus left/right |
+| Normal | `<C-h>` / `<C-l>` | Move focus left/right outside CodeDiff |
 | Normal | `<leader>h/j/k/l` | Move focus left/down/up/right |
 | Visual | `K` / `J` | Move selected lines up/down |
-| Normal | `<C-j>` / `<C-k>` | Next/previous quickfix item |
+| Normal | `<C-j>` / `<C-k>` | Next/previous quickfix item outside CodeDiff |
 | Normal | `<leader>sef` | Edit temporary scratch file |
 
 ### Search
@@ -121,11 +121,18 @@ Buffer-local after LSP attach:
 | `<leader>bf` / `<leader>df` | Format with conform |
 | `<leader>tb` | Toggle gitsigns current-line blame |
 | `<leader>gs` | Open Neogit |
-| `<leader>td` | Enter DeltaView |
+| `<leader>td` | Enter DeltaView / CodeDiff |
 | `<leader>sd` | Open DeltaMenu / search diff |
 | `-` | Open parent directory with Oil |
 | `<leader>-` | Close Oil buffer |
 | `<leader>u` | Toggle UndoTree |
+
+#### CodeDiff buffers
+
+| Key | Action |
+|---|---|
+| `<C-j>` / `<C-k>` | Next/previous hunk |
+| `<C-h>` / `<C-l>` | Previous/next file |
 
 ### Feedback / Reviewer
 
