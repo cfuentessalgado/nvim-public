@@ -35,7 +35,7 @@ vim.o.writebackup = false
 vim.o.pumheight = 10
 vim.o.showtabline = 0
 vim.o.termguicolors = true
-vim.o.background = 'dark'
+-- Leave 'background' unset so Neovim can follow the terminal's appearance.
 vim.o.winbar = '%= %m%f'
 vim.o.undodir = os.getenv 'HOME' .. '/.vim/undodir'
 vim.o.confirm = true

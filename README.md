@@ -52,8 +52,8 @@ Notable defaults:
 - whitespace shown with custom `listchars`
 - no line wrap
 - 4-space tabs/indent by default
-- true color + dark background
-- `tokyonight-night` colorscheme
+- true color + automatic terminal light/dark detection
+- `tokyonight` colorscheme: `night` for dark backgrounds, `day` for light backgrounds
 - diagnostics sorted by severity, rounded floats, virtual text off
 - `*.templ` detected as `templ`
 
