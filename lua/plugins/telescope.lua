@@ -11,7 +11,6 @@ vim.pack.add(telescope_plugins)
 local picker_prefs = {
   show_untracked = true,
   previewer = true,
-  winblend = 10,
   border = true,
   layout_config = { width = 0.8, height = 0.6 },
 }

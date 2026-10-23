@@ -8,6 +8,7 @@ require('tokyonight').setup {
 }
 vim.cmd.colorscheme 'tokyonight'
 vim.opt.fillchars:append { eob = ' ' }
+vim.opt.cmdheight = 1
 
 local function apply_highlights()
   -- vim.api.nvim_set_hl(0, 'Normal', { bg = 'none' })
