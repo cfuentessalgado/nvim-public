@@ -2,6 +2,18 @@ vim.o.number = true
 vim.o.relativenumber = true
 vim.o.mouse = 'a'
 vim.o.showmode = false
+-- Headless remotes (e.g. a rex remote session) have no tmux or display to copy through,
+-- so copy with OSC 52 and let the terminal forward it. Paste stays local because the
+-- terminal denies clipboard reads.
+if not vim.env.TMUX and not vim.env.DISPLAY and not vim.env.WAYLAND_DISPLAY then
+  local osc52 = require('vim.ui.clipboard.osc52')
+  local function paste() return { vim.fn.split(vim.fn.getreg(''), '\n'), vim.fn.getregtype('') } end
+  vim.g.clipboard = {
+    name = 'OSC 52',
+    copy = { ['+'] = osc52.copy('+'), ['*'] = osc52.copy('*') },
+    paste = { ['+'] = paste, ['*'] = paste },
+  }
+end
 vim.schedule(function() vim.o.clipboard = 'unnamedplus' end)
 vim.o.breakindent = true
 vim.o.undofile = true
